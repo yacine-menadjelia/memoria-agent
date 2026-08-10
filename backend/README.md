@@ -54,6 +54,17 @@ python test_run.py
     plutôt que de faire échouer le tour — voir le `try/except` dans
     `make_retrieve_context`. L'historique structuré, lui, reste une dépendance
     dure (pas de fallback : une erreur Postgres doit remonter).
+- `validate_output` tourne après `generate_memory`/`generate_calc`, avant
+  `format_response`, et referme une boucle dans le graphe : si l'exercice
+  généré est invalide (division qui ne tombe pas juste pour `calc`, séquence
+  avec doublons/élément vide/trop courte pour `memory`), le routage repart
+  vers le noeud de génération correspondant (`route_after_validation`) au
+  lieu d'avancer. `generation_attempts` (remis à zéro à chaque tour dans
+  `retrieve_context`) borne la boucle : au-delà de
+  `MAX_GENERATION_RETRIES` (2) tentatives, `fallback_exercise` prend le
+  relais avec un exercice déterministe (`range(1, difficulty+3)` / `a+b`,
+  comme au tout premier stub) — l'utilisateur ne doit jamais recevoir une
+  erreur 500 parce que le LLM a raté la génération plusieurs fois de suite.
 - Chaque tour affiche `[format_response] exercice prêt -> ...` : c'est le dernier
   noeud du graphe qui s'exécute, la preuve que le routage conditionnel a bien
   fonctionné.
@@ -81,12 +92,15 @@ deuxième tour d'une session donnée mais rien au tout premier tour.
 
 ## Ce qui ne bouge pas quand on ajoutera la suite
 
-Le graphe a 7 noeuds : `load_user_profile`, `analyze_performance`,
+Le graphe a 9 noeuds : `load_user_profile`, `analyze_performance`,
 `decide_next_action`, `retrieve_context`, `generate_memory`, `generate_calc`,
-`format_response`. Tous les noeuds qui prenaient des décisions ou généraient
-du contenu sont passés de règles/stubs fixes à des appels LLM (`app/llm.py`)
-et à de la récupération de contexte (`app/db.py`, `app/rag.py`). Ce qui reste
-pour aller plus loin : un noeud `validate_output` (vérifier que l'exercice
-généré est cohérent avant de le renvoyer) — mais la forme générale du graphe
-ne change pas. C'est le principe même de LangGraph : faire évoluer ce qui se
-passe *dans* un noeud sans casser le câblage autour.
+`validate_output`, `fallback_exercise`, `format_response`. `validate_output`
+introduit la première boucle du graphe (retour vers `generate_memory`/
+`generate_calc` si invalide) — c'était jusque-là un pipeline strictement
+linéaire. Tous les noeuds qui prenaient des décisions ou généraient du
+contenu sont passés de règles/stubs fixes à des appels LLM (`app/llm.py`) et
+à de la récupération de contexte (`app/db.py`, `app/rag.py`), avec un filet
+de sécurité déterministe en bout de chaîne. La forme générale ne change pas
+pour autant : c'est le principe même de LangGraph, faire évoluer ce qui se
+passe *dans* un noeud (et, ici, le câblage d'une boucle bornée) sans casser
+le reste.

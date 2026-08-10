@@ -201,9 +201,32 @@ def generate_calc_exercise(difficulty: int, context: dict | None = None) -> dict
     )
     text = next(block.text for block in response.content if block.type == "text")
     exercise = json.loads(text)
-    answer = _evaluate_expression(exercise["content"])
-    exercise["answer"] = int(answer) if answer.is_integer() else answer
+    try:
+        answer = _evaluate_expression(exercise["content"])
+        exercise["answer"] = int(answer) if answer.is_integer() else answer
+    except (ValueError, SyntaxError, ZeroDivisionError, TypeError):
+        # le LLM n'a pas respecté le format demandé (mot dans l'expression,
+        # syntaxe invalide...) — laissé à answer=None, validate_output décide
+        # s'il faut régénérer
+        exercise["answer"] = None
     return exercise
+
+
+def calc_exercise_is_valid(exercise: dict) -> bool:
+    # une réponse non entière signifie que la division ne tombait pas juste,
+    # ce que le prompt interdit explicitement — traité comme invalide plutôt
+    # que d'exposer un résultat à virgule
+    return isinstance(exercise.get("answer"), int)
+
+
+def memory_exercise_is_valid(exercise: dict) -> bool:
+    content = exercise.get("content")
+    if not isinstance(content, list) or len(content) < 2:
+        return False
+    cleaned = [item.strip() for item in content if isinstance(item, str) and item.strip()]
+    if len(cleaned) != len(content):
+        return False
+    return len(set(item.lower() for item in cleaned)) == len(cleaned)
 
 
 def generate_memory_exercise(difficulty: int, context: dict | None = None) -> dict:

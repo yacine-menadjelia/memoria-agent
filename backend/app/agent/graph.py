@@ -14,6 +14,8 @@ class SessionState(TypedDict):
     exercise_family: Literal["memory", "calc"]
     current_exercise: dict | None
     retrieved_context: dict
+    exercise_valid: bool
+    generation_attempts: int
 
 
 def make_load_user_profile(profile_store):
@@ -86,6 +88,9 @@ def make_retrieve_context(exercise_store, knowledge_base):
             "error_stats": error_stats,
             "pedagogy_tips": pedagogy_tips,
         }
+        # remis à zéro à chaque tour : le compteur de tentatives ne doit pas
+        # s'accumuler d'un tour à l'autre, seulement au sein d'une génération
+        state["generation_attempts"] = 0
         return state
 
     return retrieve_context
@@ -120,6 +125,59 @@ def generate_calc(state: SessionState) -> SessionState:
     return state
 
 
+# nombre de régénérations tolérées avant de basculer sur le fallback
+# déterministe — au-delà, on considère que le LLM ne convergera pas
+MAX_GENERATION_RETRIES = 2
+
+
+def validate_output(state: SessionState) -> SessionState:
+    exercise = state["current_exercise"]
+    is_valid = (
+        llm.calc_exercise_is_valid(exercise)
+        if exercise["type"] == "calc"
+        else llm.memory_exercise_is_valid(exercise)
+    )
+    state["exercise_valid"] = is_valid
+    if not is_valid:
+        state["generation_attempts"] = state.get("generation_attempts", 0) + 1
+        print(
+            f"[validate_output] exercice invalide (tentative "
+            f"{state['generation_attempts']}) -> {exercise}"
+        )
+    return state
+
+
+def route_after_validation(state: SessionState) -> str:
+    # fonction de routage : lecture seule, comme route_by_family
+    if state["exercise_valid"]:
+        return "format_response"
+    if state["generation_attempts"] > MAX_GENERATION_RETRIES:
+        return "fallback_exercise"
+    return "generate_memory" if state["exercise_family"] == "memory" else "generate_calc"
+
+
+def fallback_exercise(state: SessionState) -> SessionState:
+    # dernier recours déterministe : si le LLM échoue plusieurs fois de suite
+    # à produire un exercice valide, l'utilisateur reçoit quand même quelque
+    # chose plutôt qu'une erreur 500
+    difficulty = state["current_difficulty"]
+    if state["exercise_family"] == "memory":
+        state["current_exercise"] = {
+            "type": "memory",
+            "content": [str(n) for n in range(1, difficulty + 3)],
+            "difficulty": difficulty,
+        }
+    else:
+        a, b = difficulty * 3, difficulty * 2
+        state["current_exercise"] = {
+            "type": "calc",
+            "content": f"{a} + {b}",
+            "answer": a + b,
+            "difficulty": difficulty,
+        }
+    return state
+
+
 def format_response(state: SessionState) -> SessionState:
     print(f"[format_response] exercice prêt -> {state['current_exercise']}")
     return state
@@ -134,6 +192,8 @@ def build_graph(checkpointer=None, profile_store=None, exercise_store=None, know
     graph.add_node("retrieve_context", make_retrieve_context(exercise_store, knowledge_base))
     graph.add_node("generate_memory", generate_memory)
     graph.add_node("generate_calc", generate_calc)
+    graph.add_node("validate_output", validate_output)
+    graph.add_node("fallback_exercise", fallback_exercise)
     graph.add_node("format_response", format_response)
 
     graph.set_entry_point("load_user_profile")
@@ -147,8 +207,21 @@ def build_graph(checkpointer=None, profile_store=None, exercise_store=None, know
         {"generate_memory": "generate_memory", "generate_calc": "generate_calc"},
     )
 
-    graph.add_edge("generate_memory", "format_response")
-    graph.add_edge("generate_calc", "format_response")
+    graph.add_edge("generate_memory", "validate_output")
+    graph.add_edge("generate_calc", "validate_output")
+
+    graph.add_conditional_edges(
+        "validate_output",
+        route_after_validation,
+        {
+            "format_response": "format_response",
+            "generate_memory": "generate_memory",
+            "generate_calc": "generate_calc",
+            "fallback_exercise": "fallback_exercise",
+        },
+    )
+
+    graph.add_edge("fallback_exercise", "format_response")
     graph.add_edge("format_response", END)
 
     return graph.compile(checkpointer=checkpointer)

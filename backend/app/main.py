@@ -102,6 +102,8 @@ def start_session(payload: StartSessionPayload):
         "exercise_family": "calc",
         "current_exercise": None,
         "retrieved_context": {},
+        "exercise_valid": True,
+        "generation_attempts": 0,
     }
     result = graph.invoke(state, config=_config(session_id))
     _save_profile(result)
