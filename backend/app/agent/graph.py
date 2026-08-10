@@ -81,7 +81,7 @@ def format_response(state: SessionState) -> SessionState:
     return state
 
 
-def build_graph():
+def build_graph(checkpointer=None):
     graph = StateGraph(SessionState)
 
     graph.add_node("analyze_performance", analyze_performance)
@@ -103,4 +103,4 @@ def build_graph():
     graph.add_edge("generate_calc", "format_response")
     graph.add_edge("format_response", END)
 
-    return graph.compile()
+    return graph.compile(checkpointer=checkpointer)
