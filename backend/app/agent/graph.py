@@ -1,6 +1,8 @@
 from typing import TypedDict, Literal
 from langgraph.graph import StateGraph, END
 
+from app import llm
+
 
 class SessionState(TypedDict):
     session_id: str
@@ -46,20 +48,14 @@ def analyze_performance(state: SessionState) -> SessionState:
 
 
 def decide_next_action(state: SessionState) -> SessionState:
-    # version rule-based : le LLM remplacera ce bloc en phase 3, sans changer
-    # la forme du graphe (les noeuds voisins ne bougent pas)
-    difficulty = state.get("current_difficulty", 3)
-
-    if state["error_rate"] > 0.4:
-        difficulty = max(1, difficulty - 1)
-    elif state["error_rate"] < 0.15 and state["avg_response_time"] < 3.0:
-        difficulty = min(10, difficulty + 1)
-
-    last_family = state["history"][-1]["family"] if state["history"] else "calc"
-    next_family = "memory" if last_family == "calc" else "calc"
-
-    state["current_difficulty"] = difficulty
-    state["exercise_family"] = next_family
+    decision = llm.decide_next_action(
+        history=state["history"],
+        current_difficulty=state.get("current_difficulty", 3),
+        avg_response_time=state["avg_response_time"],
+        error_rate=state["error_rate"],
+    )
+    state["current_difficulty"] = decision["difficulty"]
+    state["exercise_family"] = decision["exercise_family"]
     return state
 
 

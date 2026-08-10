@@ -20,13 +20,18 @@ python test_run.py
 
 ## Ce que tu dois observer
 
-- Le graphe alterne `memory` / `calc` d'un tour à l'autre (logique `route_by_family`,
-  volontairement simpliste pour l'instant).
-- La difficulté monte quand `error_rate` est bas et `avg_response_time` est bas,
-  descend quand `error_rate > 0.4`.
+- Le choix de la difficulté et de la famille d'exercice (`decide_next_action`)
+  est fait par un appel LLM (Claude Opus 5, sortie structurée via
+  `output_config.format`, thinking désactivé + effort `low` — c'est une
+  décision simple, pas la peine de payer du raisonnement étendu à chaque tour).
+  `route_by_family` route ensuite vers `generate_memory` ou `generate_calc`
+  selon ce que le LLM a choisi — il n'alterne plus mécaniquement : le modèle
+  peut décider de rester sur la même famille si l'historique montre qu'elle
+  pose problème.
 - Chaque tour affiche `[format_response] exercice prêt -> ...` : c'est le dernier
   noeud du graphe qui s'exécute, la preuve que le routage conditionnel a bien
   fonctionné.
+- Nécessite `ANTHROPIC_API_KEY` dans `backend/.env` (voir `.env.example`).
 
 ## Point à noter (pas un bug, un sujet de discussion en entretien)
 
@@ -50,8 +55,9 @@ suite (RAG sur l'historique réel plutôt qu'un simple compteur agrégé).
 
 Le graphe a 6 noeuds : `load_user_profile`, `analyze_performance`,
 `decide_next_action`, `generate_memory`, `generate_calc`, `format_response`.
-Les phases suivantes remplacent le *contenu* de `decide_next_action`,
-`generate_memory` et `generate_calc` (règles → LLM, stub → RAG) et ajoutent
-des noeuds (`retrieve_context`, `validate_output`) — mais la forme générale du
+`decide_next_action` est déjà passé de règles fixes à un appel LLM
+(`app/llm.py`). Les phases suivantes remplacent le *contenu* de
+`generate_memory` et `generate_calc` (stub → LLM + RAG) et ajoutent des
+noeuds (`retrieve_context`, `validate_output`) — mais la forme générale du
 graphe ne change pas. C'est le principe même de LangGraph : faire évoluer ce
 qui se passe *dans* un noeud sans casser le câblage autour.

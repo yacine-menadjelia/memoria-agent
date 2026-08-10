@@ -17,6 +17,8 @@ services:
 
   backend:
     build: ./backend
+    env_file:
+      - ./backend/.env
     environment:
       DATABASE_URL: postgresql://memoria:memoria@postgres:5432/memoria
     ports:

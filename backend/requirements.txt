@@ -4,3 +4,4 @@ fastapi
 uvicorn[standard]
 langgraph-checkpoint-postgres
 psycopg[binary,pool]
+anthropic
