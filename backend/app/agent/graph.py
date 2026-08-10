@@ -4,12 +4,29 @@ from langgraph.graph import StateGraph, END
 
 class SessionState(TypedDict):
     session_id: str
+    user_id: str
     history: list[dict]
     avg_response_time: float
     error_rate: float
     current_difficulty: int
     exercise_family: Literal["memory", "calc"]
     current_exercise: dict | None
+
+
+def make_load_user_profile(profile_store):
+    def load_user_profile(state: SessionState) -> SessionState:
+        if state["history"] or profile_store is None:
+            # session déjà en cours, ou pas de store (tests) : le profil ne
+            # doit pas écraser un état qui a déjà bougé
+            return state
+        profile = profile_store.get(state["user_id"])
+        if profile is not None:
+            # cold start problem (cf README) : un utilisateur connu reprend
+            # à sa difficulté précédente plutôt qu'à la valeur par défaut (3)
+            state["current_difficulty"] = profile["last_difficulty"]
+        return state
+
+    return load_user_profile
 
 
 def analyze_performance(state: SessionState) -> SessionState:
@@ -81,16 +98,18 @@ def format_response(state: SessionState) -> SessionState:
     return state
 
 
-def build_graph(checkpointer=None):
+def build_graph(checkpointer=None, profile_store=None):
     graph = StateGraph(SessionState)
 
+    graph.add_node("load_user_profile", make_load_user_profile(profile_store))
     graph.add_node("analyze_performance", analyze_performance)
     graph.add_node("decide_next_action", decide_next_action)
     graph.add_node("generate_memory", generate_memory)
     graph.add_node("generate_calc", generate_calc)
     graph.add_node("format_response", format_response)
 
-    graph.set_entry_point("analyze_performance")
+    graph.set_entry_point("load_user_profile")
+    graph.add_edge("load_user_profile", "analyze_performance")
     graph.add_edge("analyze_performance", "decide_next_action")
 
     graph.add_conditional_edges(
