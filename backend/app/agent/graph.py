@@ -13,6 +13,7 @@ class SessionState(TypedDict):
     current_difficulty: int
     exercise_family: Literal["memory", "calc"]
     current_exercise: dict | None
+    retrieved_context: dict
 
 
 def make_load_user_profile(profile_store):
@@ -59,6 +60,37 @@ def decide_next_action(state: SessionState) -> SessionState:
     return state
 
 
+def make_retrieve_context(exercise_store, knowledge_base):
+    def retrieve_context(state: SessionState) -> SessionState:
+        family = state["exercise_family"]
+        difficulty = state["current_difficulty"]
+
+        recent_contents: list[str] = []
+        error_stats: dict = {}
+        if exercise_store is not None:
+            recent_contents = exercise_store.recent_contents(state["user_id"], family)
+            error_stats = exercise_store.error_stats(state["user_id"], family)
+
+        pedagogy_tips: list[str] = []
+        if knowledge_base is not None:
+            try:
+                pedagogy_tips = knowledge_base.search(family, difficulty)
+            except Exception as exc:
+                # la recherche vectorielle est un bonus, pas une dépendance dure :
+                # un provider d'embeddings externe indisponible (rate limit,
+                # panne...) ne doit pas casser la génération de l'exercice
+                print(f"[retrieve_context] recherche pédagogique indisponible : {exc}")
+
+        state["retrieved_context"] = {
+            "recent_contents": recent_contents,
+            "error_stats": error_stats,
+            "pedagogy_tips": pedagogy_tips,
+        }
+        return state
+
+    return retrieve_context
+
+
 def route_by_family(state: SessionState) -> str:
     # fonction de routage utilisée par add_conditional_edges : elle ne fait
     # QUE lire le state et renvoyer le nom du prochain noeud, rien d'autre
@@ -67,7 +99,7 @@ def route_by_family(state: SessionState) -> str:
 
 def generate_memory(state: SessionState) -> SessionState:
     difficulty = state["current_difficulty"]
-    exercise = llm.generate_memory_exercise(difficulty)
+    exercise = llm.generate_memory_exercise(difficulty, context=state.get("retrieved_context"))
     state["current_exercise"] = {
         "type": "memory",
         "content": exercise["content"],
@@ -78,7 +110,7 @@ def generate_memory(state: SessionState) -> SessionState:
 
 def generate_calc(state: SessionState) -> SessionState:
     difficulty = state["current_difficulty"]
-    exercise = llm.generate_calc_exercise(difficulty)
+    exercise = llm.generate_calc_exercise(difficulty, context=state.get("retrieved_context"))
     state["current_exercise"] = {
         "type": "calc",
         "content": exercise["content"],
@@ -93,12 +125,13 @@ def format_response(state: SessionState) -> SessionState:
     return state
 
 
-def build_graph(checkpointer=None, profile_store=None):
+def build_graph(checkpointer=None, profile_store=None, exercise_store=None, knowledge_base=None):
     graph = StateGraph(SessionState)
 
     graph.add_node("load_user_profile", make_load_user_profile(profile_store))
     graph.add_node("analyze_performance", analyze_performance)
     graph.add_node("decide_next_action", decide_next_action)
+    graph.add_node("retrieve_context", make_retrieve_context(exercise_store, knowledge_base))
     graph.add_node("generate_memory", generate_memory)
     graph.add_node("generate_calc", generate_calc)
     graph.add_node("format_response", format_response)
@@ -106,9 +139,10 @@ def build_graph(checkpointer=None, profile_store=None):
     graph.set_entry_point("load_user_profile")
     graph.add_edge("load_user_profile", "analyze_performance")
     graph.add_edge("analyze_performance", "decide_next_action")
+    graph.add_edge("decide_next_action", "retrieve_context")
 
     graph.add_conditional_edges(
-        "decide_next_action",
+        "retrieve_context",
         route_by_family,
         {"generate_memory": "generate_memory", "generate_calc": "generate_calc"},
     )

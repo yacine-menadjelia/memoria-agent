@@ -1,13 +1,16 @@
+import json
 import os
 import uuid
 from contextlib import asynccontextmanager
 
+import voyageai
 from fastapi import FastAPI, HTTPException
 from langgraph.checkpoint.postgres import PostgresSaver
 from pydantic import BaseModel
 
 from app.agent.graph import build_graph
-from app.db import ProfileStore, init_profiles_table
+from app.db import ExerciseHistoryStore, ProfileStore, init_exercise_history_table, init_profiles_table
+from app.rag import KnowledgeBaseStore, init_knowledge_base
 
 DATABASE_URL = os.environ.get(
     "DATABASE_URL", "postgresql://memoria:memoria@localhost:5432/memoria"
@@ -18,16 +21,30 @@ DATABASE_URL = os.environ.get(
 # user_id est distinct : il survit aux sessions et alimente load_user_profile.
 graph = None
 profile_store = None
+exercise_store = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global graph, profile_store
+    global graph, profile_store, exercise_store
     init_profiles_table(DATABASE_URL)
     profile_store = ProfileStore(DATABASE_URL)
+
+    init_exercise_history_table(DATABASE_URL)
+    exercise_store = ExerciseHistoryStore(DATABASE_URL)
+
+    voyage_client = voyageai.Client()
+    init_knowledge_base(DATABASE_URL, voyage_client)
+    knowledge_base = KnowledgeBaseStore(DATABASE_URL, voyage_client)
+
     with PostgresSaver.from_conn_string(DATABASE_URL) as checkpointer:
         checkpointer.setup()
-        graph = build_graph(checkpointer=checkpointer, profile_store=profile_store)
+        graph = build_graph(
+            checkpointer=checkpointer,
+            profile_store=profile_store,
+            exercise_store=exercise_store,
+            knowledge_base=knowledge_base,
+        )
         yield
 
 
@@ -84,6 +101,7 @@ def start_session(payload: StartSessionPayload):
         "current_difficulty": 3,
         "exercise_family": "calc",
         "current_exercise": None,
+        "retrieved_context": {},
     }
     result = graph.invoke(state, config=_config(session_id))
     _save_profile(result)
@@ -98,14 +116,23 @@ def submit_answer(session_id: str, payload: AnswerPayload):
     if state["current_exercise"] is None:
         raise HTTPException(status_code=400, detail="no exercise pending for this session")
 
+    answered_exercise = state["current_exercise"]
     state["history"].append({
-        "family": state["current_exercise"]["type"],
+        "family": answered_exercise["type"],
         "correct": payload.correct,
         "response_time": payload.response_time,
     })
 
     result = graph.invoke(state, config=_config(session_id))
     _save_profile(result)
+    exercise_store.save(
+        state["user_id"],
+        answered_exercise["type"],
+        answered_exercise["difficulty"],
+        json.dumps(answered_exercise["content"], ensure_ascii=False),
+        payload.correct,
+        payload.response_time,
+    )
     return _public_state(result)
 
 

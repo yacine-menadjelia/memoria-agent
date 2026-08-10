@@ -36,10 +36,29 @@ python test_run.py
   (`content`) vient du LLM, la réponse (`answer`) est recalculée côté serveur
   par un évaluateur arithmétique restreint (`app/llm.py::_evaluate_expression`,
   AST limité à `+ - * / ()`, jamais un `eval()` général sur du texte LLM).
+- `retrieve_context` (entre `decide_next_action` et le routage vers
+  `generate_memory`/`generate_calc`) alimente la génération avec deux sources,
+  volontairement séparées selon leur nature :
+  - **historique structuré** (`app/db.py::ExerciseHistoryStore`, simple SQL sur
+    la table `exercise_history`) : derniers exercices de l'utilisateur sur
+    cette famille (pour ne pas reproposer le même contenu) et statistiques
+    d'erreurs par difficulté (points faibles). Pas d'embeddings ici — ces
+    données sont déjà structurées, une requête directe suffit.
+  - **recherche vectorielle** (`app/rag.py`, Voyage AI + pgvector, table
+    `knowledge_base`) : uniquement pour retrouver des repères pédagogiques
+    (chunking, décomposition en calcul mental, etc.) pertinents pour la
+    famille/difficulté en cours. C'est la seule partie qui a vraiment besoin
+    de similarité sémantique.
+  - Si Voyage AI est indisponible (ex. rate limit sur un compte sans moyen de
+    paiement), `retrieve_context` continue sans les repères pédagogiques
+    plutôt que de faire échouer le tour — voir le `try/except` dans
+    `make_retrieve_context`. L'historique structuré, lui, reste une dépendance
+    dure (pas de fallback : une erreur Postgres doit remonter).
 - Chaque tour affiche `[format_response] exercice prêt -> ...` : c'est le dernier
   noeud du graphe qui s'exécute, la preuve que le routage conditionnel a bien
   fonctionné.
-- Nécessite `ANTHROPIC_API_KEY` dans `backend/.env` (voir `.env.example`).
+- Nécessite `ANTHROPIC_API_KEY` et `VOYAGE_API_KEY` dans `backend/.env` (voir
+  `.env.example`).
 
 ## Point à noter (pas un bug, un sujet de discussion en entretien)
 
@@ -56,16 +75,18 @@ de l'utilisateur (table Postgres `user_profiles`, clé `user_id` — distinct du
 que d'une constante à 3. Le bump du tour 1 lui-même reste inchangé : un
 utilisateur qui reprend à 7 se retrouve à 8, exactement comme un nouvel
 utilisateur part de 3 puis 4. Ce que ça corrige, c'est la perte de progression
-entre deux sessions, pas le biais du tour 1 — celui-là est laissé pour la
-suite (RAG sur l'historique réel plutôt qu'un simple compteur agrégé).
+entre deux sessions, pas le biais du tour 1 — celui-là dépend maintenant de
+`retrieve_context` (voir ci-dessus), qui a de l'historique réel dès le
+deuxième tour d'une session donnée mais rien au tout premier tour.
 
 ## Ce qui ne bouge pas quand on ajoutera la suite
 
-Le graphe a 6 noeuds : `load_user_profile`, `analyze_performance`,
-`decide_next_action`, `generate_memory`, `generate_calc`, `format_response`.
-Les quatre premiers sont déjà passés de règles/stubs fixes à des appels LLM
-(`app/llm.py`). Ce qui reste : ancrer `generate_memory`/`generate_calc` sur du
-RAG (éviter de reproposer un exercice déjà vu, cibler les points faibles) et
-ajouter les noeuds `retrieve_context`/`validate_output` — mais la forme
-générale du graphe ne change pas. C'est le principe même de LangGraph : faire
-évoluer ce qui se passe *dans* un noeud sans casser le câblage autour.
+Le graphe a 7 noeuds : `load_user_profile`, `analyze_performance`,
+`decide_next_action`, `retrieve_context`, `generate_memory`, `generate_calc`,
+`format_response`. Tous les noeuds qui prenaient des décisions ou généraient
+du contenu sont passés de règles/stubs fixes à des appels LLM (`app/llm.py`)
+et à de la récupération de contexte (`app/db.py`, `app/rag.py`). Ce qui reste
+pour aller plus loin : un noeud `validate_output` (vérifier que l'exercice
+généré est cohérent avant de le renvoyer) — mais la forme générale du graphe
+ne change pas. C'est le principe même de LangGraph : faire évoluer ce qui se
+passe *dans* un noeud sans casser le câblage autour.

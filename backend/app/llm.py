@@ -104,7 +104,12 @@ CALC_SYSTEM_PROMPT = (
     "nombres à deux ou trois chiffres. Difficultés hautes : opérations "
     "combinées avec parenthèses, plus grands nombres. Les divisions doivent "
     "toujours tomber juste (résultat entier). Réponds uniquement avec "
-    "l'expression, jamais le résultat."
+    "l'expression, jamais le résultat. Si on te donne les exercices récents de "
+    "l'utilisateur, ne reproduis pas la même expression. Si on te donne des "
+    "statistiques d'erreurs ou des repères pédagogiques, utilise-les pour "
+    "ajuster le type d'opération (ex: éviter les divisions si l'utilisateur "
+    "échoue déjà beaucoup dessus, ou au contraire les retravailler légèrement "
+    "en dessous de sa difficulté actuelle)."
 )
 
 MEMORY_SCHEMA = {
@@ -126,7 +131,11 @@ MEMORY_SYSTEM_PROMPT = (
     "nature des éléments doivent croître avec la difficulté : quelques chiffres "
     "pour les difficultés basses, puis des mots courts, puis des séquences plus "
     "longues mélangeant chiffres et mots pour les difficultés hautes. Chaque "
-    "élément de la séquence est une chaîne courte."
+    "élément de la séquence est une chaîne courte. Si on te donne les exercices "
+    "récents de l'utilisateur, ne réutilise pas les mêmes éléments. Si on te "
+    "donne des statistiques d'erreurs ou des repères pédagogiques, utilise-les "
+    "pour ajuster la nature des éléments (ex: revenir temporairement à des "
+    "séquences plus courtes si le taux d'erreur récent est élevé)."
 )
 
 
@@ -157,7 +166,28 @@ def _evaluate_expression(expression: str) -> float:
     return _eval_arithmetic_node(ast.parse(expression, mode="eval").body)
 
 
-def generate_calc_exercise(difficulty: int) -> dict:
+def _context_message(difficulty: int, context: dict | None) -> str:
+    parts = [f"Difficulté demandée : {difficulty}/10."]
+    if context:
+        recent = context.get("recent_contents")
+        if recent:
+            parts.append(
+                "Exercices récents de cet utilisateur, à ne pas reproposer à "
+                "l'identique : " + json.dumps(recent, ensure_ascii=False) + "."
+            )
+        stats = context.get("error_stats")
+        if stats:
+            parts.append(
+                "Statistiques d'erreurs récentes de l'utilisateur sur cette "
+                "famille : " + json.dumps(stats, ensure_ascii=False) + "."
+            )
+        tips = context.get("pedagogy_tips")
+        if tips:
+            parts.append("Repères pédagogiques pertinents : " + " ".join(tips))
+    return " ".join(parts)
+
+
+def generate_calc_exercise(difficulty: int, context: dict | None = None) -> dict:
     response = _get_client().messages.create(
         model=MODEL,
         max_tokens=256,
@@ -167,7 +197,7 @@ def generate_calc_exercise(difficulty: int) -> dict:
             "format": {"type": "json_schema", "schema": CALC_SCHEMA},
         },
         system=CALC_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": f"Difficulté demandée : {difficulty}/10."}],
+        messages=[{"role": "user", "content": _context_message(difficulty, context)}],
     )
     text = next(block.text for block in response.content if block.type == "text")
     exercise = json.loads(text)
@@ -176,7 +206,7 @@ def generate_calc_exercise(difficulty: int) -> dict:
     return exercise
 
 
-def generate_memory_exercise(difficulty: int) -> dict:
+def generate_memory_exercise(difficulty: int, context: dict | None = None) -> dict:
     response = _get_client().messages.create(
         model=MODEL,
         max_tokens=512,
@@ -186,7 +216,7 @@ def generate_memory_exercise(difficulty: int) -> dict:
             "format": {"type": "json_schema", "schema": MEMORY_SCHEMA},
         },
         system=MEMORY_SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": f"Difficulté demandée : {difficulty}/10."}],
+        messages=[{"role": "user", "content": _context_message(difficulty, context)}],
     )
     text = next(block.text for block in response.content if block.type == "text")
     return json.loads(text)
