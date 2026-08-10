@@ -28,6 +28,14 @@ python test_run.py
   selon ce que le LLM a choisi — il n'alterne plus mécaniquement : le modèle
   peut décider de rester sur la même famille si l'historique montre qu'elle
   pose problème.
+- `generate_memory` et `generate_calc` génèrent aussi l'exercice via LLM
+  plutôt qu'une formule fixe (`range(1, difficulty+3)` / `a+b`) : le contenu
+  et sa complexité varient avec la difficulté (ex. `14 * 6` à difficulté 4,
+  `(48 * 7 - 156) / 12` à difficulté 7). Pour `calc`, le serveur ne fait
+  jamais confiance au résultat renvoyé par le modèle : seule l'expression
+  (`content`) vient du LLM, la réponse (`answer`) est recalculée côté serveur
+  par un évaluateur arithmétique restreint (`app/llm.py::_evaluate_expression`,
+  AST limité à `+ - * / ()`, jamais un `eval()` général sur du texte LLM).
 - Chaque tour affiche `[format_response] exercice prêt -> ...` : c'est le dernier
   noeud du graphe qui s'exécute, la preuve que le routage conditionnel a bien
   fonctionné.
@@ -55,9 +63,9 @@ suite (RAG sur l'historique réel plutôt qu'un simple compteur agrégé).
 
 Le graphe a 6 noeuds : `load_user_profile`, `analyze_performance`,
 `decide_next_action`, `generate_memory`, `generate_calc`, `format_response`.
-`decide_next_action` est déjà passé de règles fixes à un appel LLM
-(`app/llm.py`). Les phases suivantes remplacent le *contenu* de
-`generate_memory` et `generate_calc` (stub → LLM + RAG) et ajoutent des
-noeuds (`retrieve_context`, `validate_output`) — mais la forme générale du
-graphe ne change pas. C'est le principe même de LangGraph : faire évoluer ce
-qui se passe *dans* un noeud sans casser le câblage autour.
+Les quatre premiers sont déjà passés de règles/stubs fixes à des appels LLM
+(`app/llm.py`). Ce qui reste : ancrer `generate_memory`/`generate_calc` sur du
+RAG (éviter de reproposer un exercice déjà vu, cibler les points faibles) et
+ajouter les noeuds `retrieve_context`/`validate_output` — mais la forme
+générale du graphe ne change pas. C'est le principe même de LangGraph : faire
+évoluer ce qui se passe *dans* un noeud sans casser le câblage autour.

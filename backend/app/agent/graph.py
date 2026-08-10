@@ -66,12 +66,11 @@ def route_by_family(state: SessionState) -> str:
 
 
 def generate_memory(state: SessionState) -> SessionState:
-    # stub — sera remplacé par un appel LLM (+ retrieve_context) en phase 3
     difficulty = state["current_difficulty"]
-    sequence = list(range(1, difficulty + 3))
+    exercise = llm.generate_memory_exercise(difficulty)
     state["current_exercise"] = {
         "type": "memory",
-        "content": sequence,
+        "content": exercise["content"],
         "difficulty": difficulty,
     }
     return state
@@ -79,11 +78,11 @@ def generate_memory(state: SessionState) -> SessionState:
 
 def generate_calc(state: SessionState) -> SessionState:
     difficulty = state["current_difficulty"]
-    a, b = difficulty * 3, difficulty * 2
+    exercise = llm.generate_calc_exercise(difficulty)
     state["current_exercise"] = {
         "type": "calc",
-        "content": f"{a} + {b}",
-        "answer": a + b,
+        "content": exercise["content"],
+        "answer": exercise["answer"],
         "difficulty": difficulty,
     }
     return state
