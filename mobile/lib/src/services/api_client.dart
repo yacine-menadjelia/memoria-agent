@@ -1,7 +1,5 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 
 import '../models/session_state.dart';
@@ -18,17 +16,13 @@ class ApiClient {
   final http.Client _client;
   final String baseUrl;
 
-  /// L'émulateur Android tourne dans sa propre VM réseau : `localhost` y
-  /// désigne l'émulateur lui-même, pas la machine hôte qui fait tourner le
-  /// `docker compose` du backend. `10.0.2.2` est l'alias spécial que
-  /// l'émulateur fournit pour atteindre le localhost de l'hôte. Le web et
-  /// le desktop partagent directement le réseau de l'hôte, donc
-  /// `localhost` y fonctionne normalement.
-  static String _defaultBaseUrl() {
-    if (kIsWeb) return 'http://localhost:8000';
-    if (Platform.isAndroid) return 'http://10.0.2.2:8000';
-    return 'http://localhost:8000';
-  }
+  /// Toujours `localhost` : sur Android (émulateur ou appareil physique en
+  /// USB), on route vers le backend de l'hôte via `adb reverse tcp:8000
+  /// tcp:8000` plutôt que de bricoler des cas par plateforme (`10.0.2.2`
+  /// pour l'émulateur uniquement, IP LAN pour un appareil physique...).
+  /// Un seul mécanisme réseau à documenter, qui marche pour les deux —
+  /// voir mobile/README.md.
+  static String _defaultBaseUrl() => 'http://localhost:8000';
 
   Future<SessionState> startSession(String userId) async {
     final response = await _client.post(

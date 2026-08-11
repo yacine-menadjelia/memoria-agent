@@ -60,11 +60,22 @@ ressaisie à celle affichée pendant la phase de mémorisation.
 
 ## Lancer
 
-Backend requis (`docker compose up` depuis la racine du repo). Sur
-émulateur Android, le backend est joignable via `10.0.2.2:8000` (alias
-spécial vers le localhost de l'hôte — voir le commentaire dans
-`api_client.dart`), pas `localhost`. C'est la valeur par défaut, pas de
-config à changer pour l'émulateur.
+Backend requis (`docker compose up` depuis la racine du repo). L'app
+cible toujours `http://localhost:8000` (voir `ApiClient`) ; sur Android
+(émulateur ou appareil physique en USB), il faut rediriger ce port vers
+le backend de l'hôte :
+
+```bash
+adb reverse tcp:8000 tcp:8000
+```
+
+Un seul mécanisme réseau à retenir pour les deux cas, plutôt que des cas
+spéciaux par plateforme (`10.0.2.2` pour l'émulateur, IP LAN pour un
+appareil physique...). Pour un appareil physique : activer le débogage
+USB dans les options développeur, puis accepter la popup d'autorisation
+sur le téléphone au premier branchement (si `adb devices` affiche
+`unauthorized` sans popup visible, `adb kill-server && adb start-server`
+force un nouveau handshake qui la déclenche).
 
 ```bash
 flutter pub get
