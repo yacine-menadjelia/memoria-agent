@@ -102,7 +102,7 @@ def test_memory_exercise_is_valid(exercise, expected):
 
 def test_decide_next_action_clamps_out_of_range_difficulty(monkeypatch):
     fake_client = FakeAnthropicClient(
-        {"difficulty": 15, "exercise_family": "calc", "reasoning": "test"}
+        {"difficulty": 15, "exercise_family": "calc"}
     )
     monkeypatch.setattr(llm, "_get_client", lambda: fake_client)
 
@@ -116,7 +116,7 @@ def test_decide_next_action_clamps_out_of_range_difficulty(monkeypatch):
 
 def test_decide_next_action_sends_recent_history_in_request(monkeypatch):
     fake_client = FakeAnthropicClient(
-        {"difficulty": 4, "exercise_family": "memory", "reasoning": "test"}
+        {"difficulty": 4, "exercise_family": "memory"}
     )
     monkeypatch.setattr(llm, "_get_client", lambda: fake_client)
 

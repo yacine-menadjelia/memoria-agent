@@ -36,14 +36,14 @@ DECISION_SCHEMA = {
             "enum": ["memory", "calc"],
             "description": "Type du prochain exercice.",
         },
-        "reasoning": {
-            "type": "string",
-            "description": "Une phrase expliquant la décision.",
-        },
     },
-    "required": ["difficulty", "exercise_family", "reasoning"],
+    "required": ["difficulty", "exercise_family"],
     "additionalProperties": False,
 }
+# Pas de champ "reasoning" : personne ne le lit (decide_next_action ne
+# renvoie que difficulty/exercise_family), et le faire rédiger une phrase
+# à chaque appel coûte des tokens de génération pour rien — mesuré,
+# c'est une partie non négligeable de la latence de cet appel.
 
 DECISION_SYSTEM_PROMPT = (
     "Tu es le moteur de décision d'un agent d'entraînement cognitif. À chaque tour, "
@@ -73,7 +73,7 @@ def decide_next_action(
 
     response = _get_client().messages.create(
         model=MODEL,
-        max_tokens=1024,
+        max_tokens=100,
         output_config={"format": {"type": "json_schema", "schema": DECISION_SCHEMA}},
         system=DECISION_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_content}],

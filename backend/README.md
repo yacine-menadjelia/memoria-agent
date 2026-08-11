@@ -27,7 +27,10 @@ python test_run.py
   tâches simples (classifier une difficulté, générer une courte expression),
   pas du raisonnement à payer à chaque tour, et sur un flux mobile
   interactif la latence se voit. Haiku ne supporte ni `thinking` ni
-  `effort` (400 si envoyés), d'où leur absence dans `app/llm.py`.
+  `effort` (400 si envoyés), d'où leur absence dans `app/llm.py`. Le
+  schema de sortie n'a pas de champ `reasoning` non plus : personne ne le
+  lit, et faire rédiger une phrase de justification à chaque appel coûte
+  des tokens de génération (donc du temps) pour un résultat jamais utilisé.
   `route_by_family` route ensuite vers `generate_memory` ou `generate_calc`
   selon ce que le LLM a choisi — il n'alterne plus mécaniquement : le modèle
   peut décider de rester sur la même famille si l'historique montre qu'elle
@@ -58,6 +61,11 @@ python test_run.py
     plutôt que de faire échouer le tour — voir le `try/except` dans
     `make_retrieve_context`. L'historique structuré, lui, reste une dépendance
     dure (pas de fallback : une erreur Postgres doit remonter).
+  - `KnowledgeBaseStore` cache l'embedding de la requête en mémoire par
+    `(family, difficulty)` — seulement 20 combinaisons possibles, pas la
+    peine de rappeler Voyage à chaque tour pour la même combinaison. Pas
+    d'expiration : les repères pédagogiques ne changent pas en cours de
+    vie du process.
 - `validate_output` tourne après `generate_memory`/`generate_calc`, avant
   `format_response`, et referme une boucle dans le graphe : si l'exercice
   généré est invalide (division qui ne tombe pas juste pour `calc`, séquence

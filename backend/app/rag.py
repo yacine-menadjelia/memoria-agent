@@ -142,11 +142,22 @@ class KnowledgeBaseStore:
         self._database_url = database_url
         self._client = client
         self._model = model
+        # (family, difficulty) ne prend que 20 valeurs possibles (2 familles
+        # x 10 difficultés) : un cache en mémoire suffit à éviter de
+        # rappeler Voyage pour une combinaison déjà vue, sans se soucier
+        # d'expiration — les repères pédagogiques ne changent pas en cours
+        # de vie du process.
+        self._embedding_cache: dict[tuple[str, int], list[float]] = {}
 
     def search(self, family: str, difficulty: int, k: int = 3) -> list[str]:
-        query = f"Conseils pédagogiques pour un exercice de {family} à difficulté {difficulty}/10."
-        result = self._client.embed([query], model=self._model, input_type="query")
-        embedding_literal = _to_vector_literal(result.embeddings[0])
+        cache_key = (family, difficulty)
+        embedding = self._embedding_cache.get(cache_key)
+        if embedding is None:
+            query = f"Conseils pédagogiques pour un exercice de {family} à difficulté {difficulty}/10."
+            result = self._client.embed([query], model=self._model, input_type="query")
+            embedding = result.embeddings[0]
+            self._embedding_cache[cache_key] = embedding
+        embedding_literal = _to_vector_literal(embedding)
         with psycopg.connect(self._database_url) as conn:
             rows = conn.execute(
                 """

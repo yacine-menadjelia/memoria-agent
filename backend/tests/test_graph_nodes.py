@@ -163,7 +163,7 @@ def test_decide_next_action_updates_state(monkeypatch):
     monkeypatch.setattr(
         g.llm,
         "decide_next_action",
-        lambda **kwargs: {"difficulty": 7, "exercise_family": "memory", "reasoning": "x"},
+        lambda **kwargs: {"difficulty": 7, "exercise_family": "memory"},
     )
     state = g.decide_next_action(_base_state(current_difficulty=3, exercise_family="calc"))
     assert state["current_difficulty"] == 7
@@ -240,7 +240,7 @@ def _patch_llm_for_full_graph(monkeypatch, family="calc"):
     monkeypatch.setattr(
         g.llm,
         "decide_next_action",
-        lambda **kwargs: {"difficulty": 4, "exercise_family": family, "reasoning": "x"},
+        lambda **kwargs: {"difficulty": 4, "exercise_family": family},
     )
     monkeypatch.setattr(
         g.llm, "generate_calc_exercise", lambda difficulty, context=None: {"content": "1 + 1", "answer": 2}
