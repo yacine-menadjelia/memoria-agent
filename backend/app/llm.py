@@ -77,8 +77,12 @@ def decide_next_action(
     )
     text = next(block.text for block in response.content if block.type == "text")
     decision = json.loads(text)
-    decision["difficulty"] = max(1, min(10, int(decision["difficulty"])))
+    decision["difficulty"] = _clamp_difficulty(decision["difficulty"])
     return decision
+
+
+def _clamp_difficulty(value: int) -> int:
+    return max(1, min(10, int(value)))
 
 
 CALC_SCHEMA = {
@@ -202,14 +206,17 @@ def generate_calc_exercise(difficulty: int, context: dict | None = None) -> dict
     text = next(block.text for block in response.content if block.type == "text")
     exercise = json.loads(text)
     try:
-        answer = _evaluate_expression(exercise["content"])
-        exercise["answer"] = int(answer) if answer.is_integer() else answer
+        exercise["answer"] = _normalize_answer(_evaluate_expression(exercise["content"]))
     except (ValueError, SyntaxError, ZeroDivisionError, TypeError):
         # le LLM n'a pas respecté le format demandé (mot dans l'expression,
         # syntaxe invalide...) — laissé à answer=None, validate_output décide
         # s'il faut régénérer
         exercise["answer"] = None
     return exercise
+
+
+def _normalize_answer(value: float) -> int | float:
+    return int(value) if value.is_integer() else value
 
 
 def calc_exercise_is_valid(exercise: dict) -> bool:

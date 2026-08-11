@@ -107,6 +107,36 @@ Deux scénarios : (1) le LLM rate la validation en boucle → au bout de
 relais avec un exercice déterministe ; (2) le LLM rate une fois puis se
 rattrape au tour suivant → pas de fallback, la boucle de retry suffit.
 
+## Tests automatisés (pytest)
+
+Contrairement aux scénarios ci-dessus, `tests/` ne dépend ni de Docker, ni
+d'une clé API, ni de Postgres : chaque appel externe est mocké ou remplacé
+par un double de test (`tests/fakes.py` — `FakeAnthropicClient`,
+`FakeProfileStore`, `FakeExerciseHistoryStore`, `FakeKnowledgeBase`), et les
+noeuds du graphe sont appelés directement comme des fonctions Python. Rapide
+et déterministe, adapté à la CI.
+
+- `tests/test_llm.py` : l'évaluateur arithmétique restreint (`_evaluate_expression`
+  — y compris qu'il rejette un appel de fonction du type
+  `__import__('os').system(...)`, preuve que ce n'est pas un `eval()`
+  général), `_clamp_difficulty`, `_normalize_answer`, les fonctions de
+  validité, et `decide_next_action`/`generate_calc_exercise`/
+  `generate_memory_exercise` avec un client Anthropic mocké (le contrat —
+  schema envoyé, parsing de la réponse, calcul serveur de la réponse calc —
+  est vérifié sans jamais appeler la vraie API).
+- `tests/test_graph_nodes.py` : chaque noeud isolément (`analyze_performance`,
+  `load_user_profile` avec/sans profil, `retrieve_context` y compris sa
+  résilience à une panne de `knowledge_base`, `validate_output`,
+  `fallback_exercise`, les fonctions de routage), plus deux tests qui
+  construisent le graphe complet (`build_graph()`) avec `app.llm` monkeypatché
+  pour rejouer en hermétique les deux scénarios de
+  `scripts/scenario_fallback.py`.
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest -v
+```
+
 ## Point à noter (pas un bug, un sujet de discussion en entretien)
 
 Au tour 1 d'une session, `history` est vide donc `error_rate` et
