@@ -71,6 +71,22 @@ python test_run.py
 - Nécessite `ANTHROPIC_API_KEY` et `VOYAGE_API_KEY` dans `backend/.env` (voir
   `.env.example`).
 
+## Scénarios manuels
+
+`scripts/manual_scenarios.py` pilote l'API en HTTP (donc `docker compose up`
+doit tourner) sur quelques cas concrets : progression (réponses justes et
+rapides), régression (erreurs et lenteur, jusqu'à la borne de difficulté 1),
+retour d'un utilisateur connu (vérifie que `load_user_profile` reprend bien
+à la bonne difficulté d'une session à l'autre), non-répétition des exercices
+`calc` sur une série de tours, et les erreurs API attendues (404 sur une
+session inconnue).
+
+```bash
+pip install requests
+python scripts/manual_scenarios.py
+# ou contre une autre URL : MEMORIA_BASE_URL=http://localhost:8000 python scripts/manual_scenarios.py
+```
+
 ## Point à noter (pas un bug, un sujet de discussion en entretien)
 
 Au tour 1 d'une session, `history` est vide donc `error_rate` et
