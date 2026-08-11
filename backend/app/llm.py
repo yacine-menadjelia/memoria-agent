@@ -5,7 +5,14 @@ from typing import Callable
 
 import anthropic
 
-MODEL = "claude-opus-5"
+# Haiku plutôt qu'Opus 5 : ces trois appels sont des tâches simples
+# (classification de difficulté, génération d'une expression/séquence
+# courte), pas du raisonnement profond. Mesuré : Opus 5 prend ~5-6s par
+# appel sur cette charge, Haiku ~2s — sur un tour qui enchaîne deux
+# appels (décision + génération), ça change complètement le ressenti
+# côté app. Haiku ne supporte ni `effort` ni `thinking` (400 si envoyés),
+# d'où leur absence dans les appels ci-dessous.
+MODEL = "claude-haiku-4-5"
 
 _client: anthropic.Anthropic | None = None
 
@@ -67,11 +74,7 @@ def decide_next_action(
     response = _get_client().messages.create(
         model=MODEL,
         max_tokens=1024,
-        thinking={"type": "disabled"},
-        output_config={
-            "effort": "low",
-            "format": {"type": "json_schema", "schema": DECISION_SCHEMA},
-        },
+        output_config={"format": {"type": "json_schema", "schema": DECISION_SCHEMA}},
         system=DECISION_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": user_content}],
     )
@@ -195,11 +198,7 @@ def generate_calc_exercise(difficulty: int, context: dict | None = None) -> dict
     response = _get_client().messages.create(
         model=MODEL,
         max_tokens=256,
-        thinking={"type": "disabled"},
-        output_config={
-            "effort": "low",
-            "format": {"type": "json_schema", "schema": CALC_SCHEMA},
-        },
+        output_config={"format": {"type": "json_schema", "schema": CALC_SCHEMA}},
         system=CALC_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": _context_message(difficulty, context)}],
     )
@@ -240,11 +239,7 @@ def generate_memory_exercise(difficulty: int, context: dict | None = None) -> di
     response = _get_client().messages.create(
         model=MODEL,
         max_tokens=512,
-        thinking={"type": "disabled"},
-        output_config={
-            "effort": "low",
-            "format": {"type": "json_schema", "schema": MEMORY_SCHEMA},
-        },
+        output_config={"format": {"type": "json_schema", "schema": MEMORY_SCHEMA}},
         system=MEMORY_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": _context_message(difficulty, context)}],
     )

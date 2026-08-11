@@ -127,7 +127,9 @@ def test_decide_next_action_sends_recent_history_in_request(monkeypatch):
 
     sent = fake_client.messages.calls[0]
     assert "calc" in sent["messages"][0]["content"]
-    assert sent["thinking"] == {"type": "disabled"}
+    # Haiku ne supporte pas le paramètre thinking (400 si envoyé) — on ne
+    # doit jamais le mettre dans la requête
+    assert "thinking" not in sent
 
 
 def test_generate_calc_exercise_computes_answer_serverside(monkeypatch):

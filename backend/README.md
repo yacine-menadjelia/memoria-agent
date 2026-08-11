@@ -21,9 +21,13 @@ python test_run.py
 ## Ce que tu dois observer
 
 - Le choix de la difficulté et de la famille d'exercice (`decide_next_action`)
-  est fait par un appel LLM (Claude Opus 5, sortie structurée via
-  `output_config.format`, thinking désactivé + effort `low` — c'est une
-  décision simple, pas la peine de payer du raisonnement étendu à chaque tour).
+  est fait par un appel LLM (Claude Haiku 4.5, sortie structurée via
+  `output_config.format`). Haiku plutôt qu'Opus 5 : mesuré, Opus 5 prend
+  ~5-6s par appel sur cette charge contre ~2s pour Haiku — ce sont des
+  tâches simples (classifier une difficulté, générer une courte expression),
+  pas du raisonnement à payer à chaque tour, et sur un flux mobile
+  interactif la latence se voit. Haiku ne supporte ni `thinking` ni
+  `effort` (400 si envoyés), d'où leur absence dans `app/llm.py`.
   `route_by_family` route ensuite vers `generate_memory` ou `generate_calc`
   selon ce que le LLM a choisi — il n'alterne plus mécaniquement : le modèle
   peut décider de rester sur la même famille si l'historique montre qu'elle
