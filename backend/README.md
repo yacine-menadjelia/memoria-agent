@@ -87,6 +87,26 @@ python scripts/manual_scenarios.py
 # ou contre une autre URL : MEMORIA_BASE_URL=http://localhost:8000 python scripts/manual_scenarios.py
 ```
 
+`scripts/scenario_fallback.py` force spécifiquement la boucle de régénération
+et le fallback déterministe de `validate_output` — impossible à obtenir de
+façon fiable en pilotant l'API en HTTP puisqu'on ne contrôle pas le vrai LLM.
+Volontairement boîte blanche : il monkeypatch
+`app.llm.calc_exercise_is_valid`/`memory_exercise_is_valid` pour simuler un
+LLM qui échoue la validation, puis invoque le graphe directement (`app.llm`
+et `app.agent.graph` doivent donc être importables — exécuter dans le
+conteneur backend, pas depuis l'hôte) :
+
+```bash
+docker compose cp scripts/scenario_fallback.py backend:/app/scripts/scenario_fallback.py
+docker compose exec backend python /app/scripts/scenario_fallback.py
+docker compose exec backend rm -rf /app/scripts  # nettoyage — scripts/ n'est pas dans l'image
+```
+
+Deux scénarios : (1) le LLM rate la validation en boucle → au bout de
+`MAX_GENERATION_RETRIES` (2) régénérations, `fallback_exercise` prend le
+relais avec un exercice déterministe ; (2) le LLM rate une fois puis se
+rattrape au tour suivant → pas de fallback, la boucle de retry suffit.
+
 ## Point à noter (pas un bug, un sujet de discussion en entretien)
 
 Au tour 1 d'une session, `history` est vide donc `error_rate` et
